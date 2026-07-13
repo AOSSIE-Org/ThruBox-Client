@@ -49,11 +49,26 @@ export class RelayClient {
    * @param options - Optional configuration (API key, timeout, retries)
    */
   constructor(baseUrl: string, options?: ClientOptions) {
-    // Strip trailing slash
-    this.baseUrl = baseUrl.replace(/\/+$/, "");
+    try {
+      const parsedUrl = new URL(baseUrl);
+      if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+        throw new Error("Invalid base URL protocol. Must be http: or https:");
+      }
+      this.baseUrl = parsedUrl.toString().replace(/\/+$/, "");
+    } catch (err) {
+      throw new Error(`Invalid base URL: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     this.apiKey = options?.apiKey;
     this.timeout = options?.timeout ?? DEFAULT_TIMEOUT;
     this.retries = options?.retries ?? DEFAULT_RETRIES;
+
+    if (this.timeout <= 0 || !Number.isFinite(this.timeout)) {
+      throw new Error("Timeout must be a positive finite number");
+    }
+    if (this.retries < 0 || !Number.isInteger(this.retries)) {
+      throw new Error("Retries must be a non-negative integer");
+    }
   }
 
   /**
@@ -130,30 +145,41 @@ export class RelayClient {
     options?: PollOptions,
   ): () => void {
     const intervalMs = options?.intervalMs ?? DEFAULT_POLL_INTERVAL;
+    if (intervalMs <= 0 || !Number.isFinite(intervalMs)) {
+      throw new Error("Polling interval must be a positive finite number");
+    }
+
     let stopped = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     const doPoll = async (): Promise<void> => {
       if (stopped) return;
 
+      let messages: Message[] | undefined;
       try {
-        const messages = await this.receive(address);
-        if (!stopped) {
-          callback(messages);
+        messages = await this.receive(address);
+      } catch (err) {
+        if (!stopped && options?.onError) {
+          options.onError(err instanceof Error ? err : new Error(String(err)));
         }
-      } catch {
-        // Silently skip poll errors — next cycle will retry
+      }
+
+      if (!stopped && messages) {
+        callback(messages);
+      }
+
+      if (!stopped) {
+        timeoutId = setTimeout(doPoll, intervalMs);
       }
     };
 
     // Run the first poll immediately
     doPoll();
 
-    const intervalId = setInterval(doPoll, intervalMs);
-
     // Return stop function
     return () => {
       stopped = true;
-      clearInterval(intervalId);
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }
 
@@ -167,71 +193,84 @@ export class RelayClient {
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
 
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
+    const headers: Record<string, string> = {};
+    if (init?.method === "POST" || init?.method === "PUT" || init?.method === "PATCH") {
+      headers["Content-Type"] = "application/json";
+    }
 
     if (this.apiKey) {
       headers["X-API-Key"] = this.apiKey;
     }
 
+    const maxRetries = init?.method === "POST" ? 0 : this.retries;
     let lastError: Error | undefined;
 
-    for (let attempt = 0; attempt <= this.retries; attempt++) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-        const response = await fetch(url, {
-          ...init,
-          headers: { ...headers, ...init?.headers },
-          signal: controller.signal,
-        });
+        try {
+          const response = await fetch(url, {
+            ...init,
+            headers: { ...headers, ...init?.headers },
+            signal: controller.signal,
+          });
 
-        clearTimeout(timeoutId);
-
-        // Handle success (2xx)
-        if (response.ok) {
-          // 204 No Content (e.g., DELETE)
-          if (response.status === 204) {
-            return undefined as T;
+          // Handle success (2xx)
+          if (response.ok) {
+            // 204 No Content (e.g., DELETE)
+            if (response.status === 204) {
+              return undefined as T;
+            }
+            return (await response.json()) as T;
           }
-          return (await response.json()) as T;
-        }
 
-        // Handle specific error codes (no retry)
-        if (response.status === 401) {
-          throw new RelayUnauthorizedError();
-        }
+          // Handle specific error codes (no retry)
+          if (response.status === 401) {
+            throw new RelayUnauthorizedError();
+          }
 
-        if (response.status === 404) {
-          const text = await response.text();
-          throw new RelayNotFoundError(text || "Not found");
-        }
+          if (response.status === 404) {
+            const text = await response.text();
+            throw new RelayNotFoundError(text || "Not found");
+          }
 
-        if (response.status === 413) {
-          throw new RelayPayloadTooLargeError();
-        }
+          if (response.status === 413) {
+            throw new RelayPayloadTooLargeError();
+          }
 
-        if (response.status === 429) {
-          const retryAfter = parseInt(
-            response.headers.get("Retry-After") || "60",
-            10,
+          if (response.status === 429) {
+            const retryAfterHeader = response.headers.get("Retry-After");
+            let retryAfter = 60;
+            if (retryAfterHeader) {
+              const parsedInt = parseInt(retryAfterHeader, 10);
+              if (!isNaN(parsedInt)) {
+                retryAfter = parsedInt;
+              } else {
+                const date = new Date(retryAfterHeader).getTime();
+                if (!isNaN(date)) {
+                  retryAfter = Math.max(0, Math.ceil((date - Date.now()) / 1000));
+                }
+              }
+            }
+            throw new RelayRateLimitError(retryAfter);
+          }
+
+          // 4xx errors (no retry)
+          if (response.status >= 400 && response.status < 500) {
+            const text = await response.text();
+            throw new RelayError(text || `Request failed`, response.status);
+          }
+
+          // 5xx errors — retry with backoff
+          lastError = new RelayError(
+            `Server error: ${response.status}`,
+            response.status,
           );
-          throw new RelayRateLimitError(retryAfter);
+        } finally {
+          clearTimeout(timeoutId);
         }
-
-        // 4xx errors (no retry)
-        if (response.status >= 400 && response.status < 500) {
-          const text = await response.text();
-          throw new RelayError(text || `Request failed`, response.status);
-        }
-
-        // 5xx errors — retry with backoff
-        lastError = new RelayError(
-          `Server error: ${response.status}`,
-          response.status,
-        );
       } catch (error) {
         // If it's one of our typed errors, don't retry (except 5xx which are handled above)
         if (error instanceof RelayError && error.statusCode !== 0 && error.statusCode < 500) {
@@ -251,7 +290,7 @@ export class RelayClient {
       }
 
       // Exponential backoff before retry (1s, 2s, 4s, ...)
-      if (attempt < this.retries) {
+      if (attempt < maxRetries) {
         const delay = Math.pow(2, attempt) * 1000;
         await new Promise((resolve) => setTimeout(resolve, delay));
       }

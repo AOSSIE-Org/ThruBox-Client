@@ -47,6 +47,8 @@ export interface ClientOptions {
 export interface PollOptions {
   /** Polling interval in milliseconds. Default: 10000 (10 seconds) */
   intervalMs?: number;
+  /** Optional callback for handling polling or network errors */
+  onError?: (error: Error) => void;
 }
 
 /**
