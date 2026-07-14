@@ -159,8 +159,13 @@ export class RelayClient {
       try {
         messages = await this.receive(address);
       } catch (err) {
-        if (!stopped && options?.onError) {
-          options.onError(err instanceof Error ? err : new Error(String(err)));
+        if (!stopped) {
+          const error = err instanceof Error ? err : new Error(String(err));
+          if (options?.onError) {
+            options.onError(error);
+          } else {
+            console.error("RelayClient polling error:", error);
+          }
         }
       }
 
@@ -244,9 +249,9 @@ export class RelayClient {
             const retryAfterHeader = response.headers.get("Retry-After");
             let retryAfter = 60;
             if (retryAfterHeader) {
-              const parsedInt = parseInt(retryAfterHeader, 10);
-              if (!isNaN(parsedInt)) {
-                retryAfter = parsedInt;
+              const parsedNum = Number(retryAfterHeader);
+              if (!Number.isNaN(parsedNum)) {
+                retryAfter = parsedNum;
               } else {
                 const date = new Date(retryAfterHeader).getTime();
                 if (!isNaN(date)) {
@@ -292,7 +297,8 @@ export class RelayClient {
       // Exponential backoff before retry (1s, 2s, 4s, ...)
       if (attempt < maxRetries) {
         const delay = Math.pow(2, attempt) * 1000;
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        const jitter = Math.random() * 1000;
+        await new Promise((resolve) => setTimeout(resolve, delay + jitter));
       }
     }
 

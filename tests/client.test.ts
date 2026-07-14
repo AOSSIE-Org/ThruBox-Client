@@ -30,7 +30,7 @@ describe("RelayClient", () => {
   let client: RelayClient;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     client = new RelayClient("http://localhost:3000", { retries: 0 });
   });
 
@@ -206,6 +206,7 @@ describe("RelayClient", () => {
   describe("retry logic", () => {
     it("should retry on 5xx errors with exponential backoff", async () => {
       vi.useFakeTimers();
+      const mathRandomSpy = vi.spyOn(Math, "random").mockReturnValue(0.5); // jitter = 500ms
       try {
         const retryClient = new RelayClient("http://localhost:3000", {
           retries: 2,
@@ -221,15 +222,16 @@ describe("RelayClient", () => {
 
         const promise = retryClient.receive("0x1");
         
-        // 1st attempt fails, waits 1000ms
-        await vi.advanceTimersByTimeAsync(1050);
-        // 2nd attempt fails, waits 2000ms
-        await vi.advanceTimersByTimeAsync(2050);
+        // 1st attempt fails, waits 1000ms (delay) + 500ms (jitter)
+        await vi.advanceTimersByTimeAsync(1550);
+        // 2nd attempt fails, waits 2000ms (delay) + 500ms (jitter)
+        await vi.advanceTimersByTimeAsync(2550);
 
         const result = await promise;
         expect(result).toEqual(mockMessages);
         expect(mockFetch).toHaveBeenCalledTimes(3);
       } finally {
+        mathRandomSpy.mockRestore();
         vi.useRealTimers();
       }
     });
@@ -318,11 +320,13 @@ describe("RelayClient", () => {
   // --- Validation & URL handling ---
 
   describe("validation and URL handling", () => {
-    it("should strip trailing slashes from base URL", () => {
+    it("should strip trailing slashes from base URL", async () => {
       const slashClient = new RelayClient("http://localhost:3000///", {
         retries: 0,
       });
-      expect((slashClient as any).baseUrl).toBe("http://localhost:3000");
+      mockFetch.mockResolvedValueOnce(jsonResponse({ status: "ok" }));
+      await slashClient.health();
+      expect(mockFetch.mock.calls[0][0]).toBe("http://localhost:3000/health");
     });
 
     it("should throw on invalid URL protocol", () => {
