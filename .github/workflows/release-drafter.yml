@@ -14,8 +14,8 @@ jobs:
     if: ${{ github.repository_owner == 'AOSSIE-Org' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: read
+      contents: write # Required to create and update release drafts
+      pull-requests: read # Required to scan PRs and gather changelog data
     steps:
       - name: Run Release Drafter
         uses: release-drafter/release-drafter@v7
