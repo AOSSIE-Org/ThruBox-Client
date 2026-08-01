@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - main
-      - master
-  pull_request:
-    types: [closed]
 
 permissions:
   contents: write
@@ -16,6 +13,9 @@ jobs:
   update_release_draft:
     if: ${{ github.repository_owner == 'AOSSIE-Org' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
     steps:
       - name: Run Release Drafter
         uses: release-drafter/release-drafter@v7
