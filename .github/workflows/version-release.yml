@@ -167,7 +167,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
@@ -199,12 +199,16 @@ jobs:
             exit 1
           fi
           echo "✓ NPMJS_TOKEN secret is present"
+          echo "Node: $(node -v) | npm: $(npm -v)"
+          echo "Registry: $(npm config get registry)"
+          cat ~/.npmrc 2>/dev/null | sed 's/_authToken=.*/_authToken=***/' || true
           NPM_USER=$(npm whoami 2>&1) || {
             echo "::error::npm authentication failed. The NPMJS_TOKEN may be expired or invalid."
             echo "npm whoami output: $NPM_USER"
             exit 1
           }
           echo "✓ Authenticated as: $NPM_USER"
+          npm org ls aossie-org "$NPM_USER" 2>&1 || echo "⚠ Could not verify org membership"
 
       - name: Publish to npm
         run: npm publish --provenance --access public
