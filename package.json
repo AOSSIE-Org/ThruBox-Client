@@ -1,6 +1,6 @@
 {
   "name": "@aossie/thrubox-client",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "TypeScript SDK for ThruBox Server — a simple, self-hostable encrypted message relay",
   "type": "module",
   "main": "./dist/index.cjs",
