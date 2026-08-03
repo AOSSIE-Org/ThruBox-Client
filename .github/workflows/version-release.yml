@@ -199,7 +199,7 @@ jobs:
         run: |
           echo "### npm Publish Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Package:** @aossie/thrubox-client" >> $GITHUB_STEP_SUMMARY
+          echo "- **Package:** @aossie-org/thrubox-client" >> $GITHUB_STEP_SUMMARY
           echo "- **Version:** ${{ needs.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Registry:** https://www.npmjs.com/package/@aossie/thrubox-client" >> $GITHUB_STEP_SUMMARY
+          echo "- **Registry:** https://www.npmjs.com/package/@aossie-org/thrubox-client" >> $GITHUB_STEP_SUMMARY
           echo "- **Provenance:** ✓ (supply-chain attestation enabled)" >> $GITHUB_STEP_SUMMARY
