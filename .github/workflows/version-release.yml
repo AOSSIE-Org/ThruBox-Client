@@ -190,6 +190,22 @@ jobs:
       - name: Verify package contents
         run: npm pack --dry-run
 
+      - name: Verify npm authentication
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPMJS_TOKEN secret is not set. Configure it in repo Settings → Secrets → Actions."
+            exit 1
+          fi
+          echo "✓ NPMJS_TOKEN secret is present"
+          NPM_USER=$(npm whoami 2>&1) || {
+            echo "::error::npm authentication failed. The NPMJS_TOKEN may be expired or invalid."
+            echo "npm whoami output: $NPM_USER"
+            exit 1
+          }
+          echo "✓ Authenticated as: $NPM_USER"
+
       - name: Publish to npm
         run: npm publish --provenance --access public
         env:
