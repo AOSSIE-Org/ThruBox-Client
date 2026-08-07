@@ -89,13 +89,13 @@ A **zero-dependency** TypeScript SDK for the [ThruBox Server](https://github.com
 ### Install
 
 ```bash
-npm install @aossie/thrubox-client
+npm install @aossie-org/thrubox-client
 ```
 
 ### Quick Start
 
 ```typescript
-import { RelayClient } from '@aossie/thrubox-client';
+import { RelayClient } from '@aossie-org/thrubox-client';
 
 const relay = new RelayClient('https://relay.example.com');
 
@@ -159,7 +159,7 @@ Check server health.
 ## ⚠️ Error Handling
 
 ```typescript
-import { RelayRateLimitError, RelayPayloadTooLargeError } from '@aossie/thrubox-client';
+import { RelayRateLimitError, RelayPayloadTooLargeError } from '@aossie-org/thrubox-client';
 
 try {
   await relay.send({ to, from, payload });
