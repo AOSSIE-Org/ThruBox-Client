@@ -74,27 +74,32 @@ What we expect:
 ### Setup
 
 1. **Fork the Repository**
+
    ```bash
    # Click the 'Fork' button at the top right of this page
    ```
 
 2. **Clone Your Fork**
+
    ```bash
    git clone https://github.com/YOUR_USERNAME/ThruBox-Client.git
    cd ThruBox-Client
    ```
 
 3. **Add Upstream Remote**
+
    ```bash
    git remote add upstream https://github.com/AOSSIE-Org/ThruBox-Client.git
    ```
 
 4. **Install Dependencies**
+
    ```bash
    npm install
    ```
 
 5. **Build the SDK**
+
    ```bash
    npm run build
    ```

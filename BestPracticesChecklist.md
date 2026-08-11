@@ -32,6 +32,7 @@
 | Security           | 6   | 9     | 🟡     |
 | Analysis           | 3   | 7     | 🔴     |
 | **Total**          | **29** | **49** | **59%** |
+
 ---
 
 ## 🏗️ Basics
@@ -240,6 +241,7 @@
 > Add domain-specific notes here for Web3, Full-Stack, or AI projects.
 
 ### SDK / Library Notes
+
 - This SDK is a thin transport layer over the ThruBox Server REST API; it does not implement cryptography itself. See `crypto_*` notes above.
 - `.coderabbit.yaml` enforces a zero-runtime-dependency rule for this package — see `AGENTS.md`.
 
