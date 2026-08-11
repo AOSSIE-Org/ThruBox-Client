@@ -1,4 +1,4 @@
-# Contributing to TODO: Project Name
+# Contributing to ThruBox Client SDK
 
 ⭐ First off, thank you for considering contributing to this project! ⭐
 
@@ -9,7 +9,7 @@ We welcome contributions from everyone. By participating in this project, you ag
 **All project communication MUST happen on Discord. We do not pay attention to GitHub notifications.**
 
 - Join our [Discord server](https://discord.gg/hjUhu33uAn) before starting any work
-- Post your PR/issue updates in the relevant Discord channel (**MANDATORY**)
+- Post your PR/issue updates in the [#thrubox channel](https://discord.com/channels/995968619034984528/1525382676964446258) (**MANDATORY**)
 - All discussions, questions, and updates should be on Discord
 - GitHub is for code only - Discord is for communication
 
@@ -68,7 +68,8 @@ What we expect:
 
 ### Prerequisites
 
-TODO: List prerequisites specific to your project
+- Node.js 18 or later
+- npm (or yarn/pnpm)
 
 ### Setup
 
@@ -79,25 +80,23 @@ TODO: List prerequisites specific to your project
 
 2. **Clone Your Fork**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/TODO.git
-   cd TODO
+   git clone https://github.com/YOUR_USERNAME/ThruBox-Client.git
+   cd ThruBox-Client
    ```
 
 3. **Add Upstream Remote**
    ```bash
-   git remote add upstream https://github.com/AOSSIE-Org/TODO.git
+   git remote add upstream https://github.com/AOSSIE-Org/ThruBox-Client.git
    ```
 
 4. **Install Dependencies**
    ```bash
    npm install
-   # or yarn install
-   # or pnpm install
    ```
 
-5. **Run the Project**
+5. **Build the SDK**
    ```bash
-   npm run dev
+   npm run build
    ```
 
 ## 🔄 Development Workflow
@@ -121,12 +120,13 @@ git checkout -b fix/your-bug-fix
 
 ### 3. Test Your Changes
 
-TODO: Add project-specific testing instructions
+Run the test suite (Vitest), linter, and format check before opening a PR:
 
 ```bash
-npm test
-# or
-npm run lint
+npm test              # run the Vitest suite
+npm run coverage       # run tests with coverage
+npm run lint           # ESLint
+npm run format:check   # Prettier check
 ```
 
 ### 4. Commit Your Changes
@@ -210,7 +210,7 @@ Steps to test the changes
 
 ### After Submission
 
-- Post your PR in the project's Discord channel for visibility(**IMPORTANT**)
+- Post your PR in the [#thrubox channel](https://discord.com/channels/995968619034984528/1525382676964446258) for visibility(**IMPORTANT**)
 - Respond to review comments promptly
 - Make requested changes in new commits
 - Be patient - maintainers will review when available
@@ -223,7 +223,7 @@ Steps to test the changes
 
 ## 📝 Code Style Guidelines
 
-TODO: Add project-specific code style guidelines
+This SDK is **zero-dependency at runtime** — only `devDependencies` may be used for build/test tooling. Do not add runtime dependencies without discussing it in an issue first. The package ships both ESM and CJS builds (via `tsup`) with TypeScript declarations, so avoid Node/browser-specific APIs that aren't available in both environments (the SDK uses the native `fetch` API).
 
 ### General Guidelines
 
@@ -538,4 +538,4 @@ If you encounter issues not covered here:
 - Check for existing PRs before starting to avoid duplication, as there might PRs that didn't mention the related issue
 
 
-Thank you for contributing to TODO! Your efforts help make this project better for everyone. 🚀
+Thank you for contributing to ThruBox Client SDK! Your efforts help make this project better for everyone. 🚀
