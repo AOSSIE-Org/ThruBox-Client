@@ -115,6 +115,23 @@ await relay.delete(messages[0].id);
 
 ---
 
+## 🛠️ Development
+
+To build and test the SDK itself (not just consume it):
+
+```bash
+git clone https://github.com/AOSSIE-Org/ThruBox-Client.git
+cd ThruBox-Client
+npm install
+
+npm run build     # build ESM + CJS output with tsup
+npm test          # run the Vitest suite
+npm run coverage  # run tests with coverage
+npm run lint      # ESLint
+```
+
+---
+
 ## 📖 API Reference
 
 ### `new RelayClient(baseUrl, options?)`
