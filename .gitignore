@@ -24,3 +24,8 @@ Thumbs.db
 
 # npm pack artifacts
 *.tgz
+
+# Unremediated security review reports — excluded from Git until findings
+# are closed out by the security-remediation skill, which publishes to
+# security-reviews/
+unremediated-security-reviews/
