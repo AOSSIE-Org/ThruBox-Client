@@ -6,6 +6,7 @@ export { RelayClient } from "./client";
 export type {
   Message,
   SendParams,
+  ReceiveOptions,
   ClientOptions,
   PollOptions,
   HealthResponse,

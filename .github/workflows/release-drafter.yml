@@ -1,9 +1,16 @@
 name: Release Drafter
 
+# Manual only. Release notes are written by hand in the vX.Y.Z draft release,
+# which version-release.yml publishes when VERSION changes. Running this on
+# every push to main would overwrite that draft. Run it from the Actions tab
+# to generate a starting draft from merged pull requests.
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+
+# Two manual runs at once would both rewrite the same draft.
+concurrency:
+  group: release-drafter
+  cancel-in-progress: false
 
 permissions:
   contents: write

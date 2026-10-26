@@ -109,6 +109,10 @@ await relay.send({
 // Receive messages
 const messages = await relay.receive('0xMyWallet');
 
+// Later, fetch only what arrived since
+const lastSeq = messages.at(-1)?.seq ?? 0;
+const fresh = await relay.receive('0xMyWallet', { after: lastSeq });
+
 // Delete a message after reading
 await relay.delete(messages[0].id);
 ```
@@ -144,11 +148,18 @@ npm run lint      # ESLint
 
 ### `relay.send(params): Promise<Message>`
 
-Send an encrypted message to the relay.
+Send an encrypted message to the relay. The returned message carries the server-assigned `id` and, on ThruBox Server 1.0 or later, its `seq`. On those servers sending an identical message twice is safe: it is stored once and the existing message is returned.
 
-### `relay.receive(address): Promise<Message[]>`
+### `relay.receive(address, options?): Promise<Message[]>`
 
-Fetch all messages for a wallet address.
+Fetch messages for a wallet address, oldest first.
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `after` | `number` | Only return messages whose `seq` is greater than this |
+| `limit` | `number` | Return at most this many messages (1–1000). A full page means there may be more: ask again with `after` set to the last `seq` |
+
+On ThruBox Server 1.0 or later, every message has a `seq`: its position in the mailbox (1, 2, 3, …). It only increases and is never reused, so remembering the highest `seq` you have handled and passing it as `after` gives you exactly the new messages. Each device keeps its own cursor. Older servers send no `seq` and ignore `after` and `limit`, returning the whole mailbox.
 
 ### `relay.delete(id): Promise<void>`
 
@@ -158,14 +169,24 @@ Delete a specific message by ID.
 
 Auto-poll for new messages. Returns a stop function.
 
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `intervalMs` | `number` | `10000` | Time between polls |
+| `onError` | `(error) => void` | logs | Called when a poll or the callback fails |
+| `after` | `number` | — | Turns on cursor tracking, starting from this `seq` (`0` for the whole mailbox) |
+
+Without `after`, every poll passes the whole mailbox to the callback. With `after`, each poll fetches only messages newer than the cursor, and the cursor moves forward once the callback returns (or its promise resolves). If the callback throws or rejects, the cursor stays put and the same messages are delivered again on the next poll, so a failed save is retried rather than lost.
+
 ```typescript
-const stop = relay.poll('0xMyWallet', (messages) => {
-  console.log('New messages:', messages);
-}, { intervalMs: 5000 });
+const stop = relay.poll('0xMyWallet', async (messages) => {
+  await saveLocally(messages); // throw to have them delivered again
+}, { intervalMs: 5000, after: 0 });
 
 // Later: stop polling
 stop();
 ```
+
+The next poll is scheduled after the callback finishes, so polls never overlap.
 
 ### `relay.health(): Promise<HealthResponse>`
 

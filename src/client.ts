@@ -1,6 +1,7 @@
 import type {
   Message,
   SendParams,
+  ReceiveOptions,
   ClientOptions,
   PollOptions,
   HealthResponse,
@@ -31,8 +32,8 @@ const DEFAULT_POLL_INTERVAL = 10_000; // 10 seconds
  * // Receive messages
  * const messages = await relay.receive('0xMyWallet');
  *
- * // Poll for new messages
- * const stop = relay.poll('0xMyWallet', (msgs) => console.log(msgs));
+ * // Poll for new messages, fetching only ones not yet handled
+ * const stop = relay.poll('0xMyWallet', (msgs) => console.log(msgs), { after: 0 });
  * // Later: stop();
  * ```
  */
@@ -75,7 +76,10 @@ export class RelayClient {
    * Send an encrypted message through the relay.
    *
    * @param params - The message to send (to, from, payload)
-   * @returns The stored message with server-generated ID and timestamps
+   * Retrying an identical send is safe on current servers: the server stores
+   * it once and returns the existing message.
+   *
+   * @returns The stored message with server-generated ID, seq and timestamps
    * @throws {RelayPayloadTooLargeError} If the payload exceeds the server's max size
    * @throws {RelayRateLimitError} If the rate limit is exceeded
    * @throws {RelayUnauthorizedError} If an API key is required but missing/invalid
@@ -89,21 +93,33 @@ export class RelayClient {
   }
 
   /**
-   * Fetch all messages addressed to a wallet address.
+   * Fetch messages addressed to a wallet address, oldest first.
    *
    * @param address - The recipient wallet address to fetch messages for
+   * @param options - Optional cursor (`after`) and page size (`limit`)
    * @returns An array of messages (empty array if none)
+   *
+   * @example
+   * ```typescript
+   * // Only messages after the last one handled
+   * const fresh = await relay.receive('0xMyWallet', { after: lastSeq });
+   * ```
    */
-  async receive(address: string): Promise<Message[]> {
+  async receive(address: string, options?: ReceiveOptions): Promise<Message[]> {
+    const query = new URLSearchParams();
+    if (options?.after !== undefined) query.set("after", String(options.after));
+    if (options?.limit !== undefined) query.set("limit", String(options.limit));
+    const qs = query.toString();
+
     return this.request<Message[]>(
-      `/api/messages/${encodeURIComponent(address)}`,
+      `/api/messages/${encodeURIComponent(address)}${qs ? `?${qs}` : ""}`,
     );
   }
 
   /**
    * Delete a specific message by its ID.
    *
-   * @param id - The UUID of the message to delete
+   * @param id - The ID of the message to delete
    */
   async delete(id: string): Promise<void> {
     await this.request<void>(`/api/messages/${encodeURIComponent(id)}`, {
@@ -124,16 +140,21 @@ export class RelayClient {
    * Poll the relay for new messages at a regular interval.
    * Returns a stop function that cancels the polling.
    *
+   * By default each poll passes the whole mailbox to the callback. Set
+   * `options.after` to track a cursor instead, so each poll only fetches
+   * messages the callback has not yet handled successfully. The next poll is
+   * scheduled once the callback (and any promise it returns) has finished.
+   *
    * @param address - The wallet address to poll for
-   * @param callback - Called with new messages on each poll cycle
-   * @param options - Polling configuration (interval)
+   * @param callback - Called with the messages fetched on each poll cycle
+   * @param options - Polling configuration (interval, error handler, cursor)
    * @returns A function that stops polling when called
    *
    * @example
    * ```typescript
-   * const stop = relay.poll('0xMyWallet', (messages) => {
-   *   console.log('New messages:', messages);
-   * }, { intervalMs: 5000 });
+   * const stop = relay.poll('0xMyWallet', async (messages) => {
+   *   await saveLocally(messages); // throw to have them delivered again
+   * }, { intervalMs: 5000, after: 0 });
    *
    * // Later: stop polling
    * stop();
@@ -141,36 +162,66 @@ export class RelayClient {
    */
   poll(
     address: string,
-    callback: (messages: Message[]) => void,
+    callback: (messages: Message[]) => void | Promise<void>,
     options?: PollOptions,
   ): () => void {
     const intervalMs = options?.intervalMs ?? DEFAULT_POLL_INTERVAL;
     if (intervalMs <= 0 || !Number.isFinite(intervalMs)) {
       throw new Error("Polling interval must be a positive finite number");
     }
+    let cursor = options?.after;
+    if (cursor !== undefined && (cursor < 0 || !Number.isInteger(cursor))) {
+      throw new Error("Polling cursor (after) must be a non-negative integer");
+    }
 
     let stopped = false;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    const reportError = (err: unknown): void => {
+      if (stopped) return;
+      const error = err instanceof Error ? err : new Error(String(err));
+      if (options?.onError) {
+        // An error handler that throws must not end the polling loop.
+        try {
+          options.onError(error);
+        } catch (handlerErr) {
+          console.error("RelayClient onError handler threw:", handlerErr);
+        }
+      } else {
+        console.error("RelayClient polling error:", error);
+      }
+    };
 
     const doPoll = async (): Promise<void> => {
       if (stopped) return;
 
       let messages: Message[] | undefined;
       try {
-        messages = await this.receive(address);
+        messages = await this.receive(
+          address,
+          cursor === undefined ? undefined : { after: cursor },
+        );
       } catch (err) {
-        if (!stopped) {
-          const error = err instanceof Error ? err : new Error(String(err));
-          if (options?.onError) {
-            options.onError(error);
-          } else {
-            console.error("RelayClient polling error:", error);
-          }
-        }
+        reportError(err);
       }
 
       if (!stopped && messages) {
-        callback(messages);
+        // Work out the next cursor before the callback runs, in case it
+        // modifies the array it is given.
+        let next = cursor;
+        if (next !== undefined) {
+          for (const m of messages) {
+            if (typeof m.seq === "number" && m.seq > next) next = m.seq;
+          }
+        }
+
+        try {
+          await callback(messages);
+          // Only move past messages the callback handled without throwing.
+          cursor = next;
+        } catch (err) {
+          reportError(err);
+        }
       }
 
       if (!stopped) {

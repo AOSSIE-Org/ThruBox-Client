@@ -97,16 +97,35 @@ jobs:
             const version = process.env.VERSION;
 
             // Get all releases
-            const { data: releases } = await github.rest.repos.listReleases({
+            const releases = await github.paginate(github.rest.repos.listReleases, {
               owner: context.repo.owner,
               repo: context.repo.repo,
             });
 
-            // Find the draft release
-            const draftRelease = releases.find(release => release.draft === true);
+            // GitHub's generated "What's Changed" list since the last release.
+            const previous = releases.find(r => !r.draft && !r.prerelease);
+            const { data: generated } = await github.rest.repos.generateReleaseNotes({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: version,
+              ...(previous ? { previous_tag_name: previous.tag_name } : {}),
+            });
+
+            // Prefer the draft written for this version (named or tagged
+            // vX.Y.Z); otherwise fall back to any draft, such as one from
+            // Release Drafter.
+            const draftRelease =
+              releases.find(r => r.draft && (r.name === version || r.tag_name === version)) ||
+              releases.find(r => r.draft);
 
             if (draftRelease) {
               console.log(`Found draft release: ${draftRelease.name}`);
+
+              // Keep the draft's own notes, but always use a freshly generated
+              // list: a "What's Changed" section already in the draft (such
+              // as one from Release Drafter) may be stale, so drop it.
+              const notes = (draftRelease.body || '').split(/^## What's Changed/m)[0].trim();
+              const body = `${notes}\n\n${generated.body}`.trim();
 
               // Update and publish the draft release
               await github.rest.repos.updateRelease({
@@ -115,20 +134,22 @@ jobs:
                 release_id: draftRelease.id,
                 tag_name: version,
                 name: version,
+                body,
                 draft: false,
+                make_latest: 'true',
               });
 
               console.log(`✓ Published draft release as ${version}`);
               core.setOutput('released', 'true');
             } else {
-              console.log('⚠️ No draft release found. Creating release automatically.');
+              console.log('⚠️ No draft release found. Creating release with generated notes.');
 
               await github.rest.repos.createRelease({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 tag_name: version,
                 name: version,
-                body: `## Release ${version}\n\nThis release was automatically created when the VERSION file was updated.`,
+                body: generated.body,
                 draft: false,
                 prerelease: false,
               });
