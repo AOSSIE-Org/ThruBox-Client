@@ -181,7 +181,12 @@ export class RelayClient {
       if (stopped) return;
       const error = err instanceof Error ? err : new Error(String(err));
       if (options?.onError) {
-        options.onError(error);
+        // An error handler that throws must not end the polling loop.
+        try {
+          options.onError(error);
+        } catch (handlerErr) {
+          console.error("RelayClient onError handler threw:", handlerErr);
+        }
       } else {
         console.error("RelayClient polling error:", error);
       }
@@ -201,14 +206,19 @@ export class RelayClient {
       }
 
       if (!stopped && messages) {
+        // Work out the next cursor before the callback runs, in case it
+        // modifies the array it is given.
+        let next = cursor;
+        if (next !== undefined) {
+          for (const m of messages) {
+            if (typeof m.seq === "number" && m.seq > next) next = m.seq;
+          }
+        }
+
         try {
           await callback(messages);
           // Only move past messages the callback handled without throwing.
-          if (cursor !== undefined) {
-            for (const m of messages) {
-              if (typeof m.seq === "number" && m.seq > cursor) cursor = m.seq;
-            }
-          }
+          cursor = next;
         } catch (err) {
           reportError(err);
         }

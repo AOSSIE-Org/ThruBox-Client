@@ -148,7 +148,7 @@ npm run lint      # ESLint
 
 ### `relay.send(params): Promise<Message>`
 
-Send an encrypted message to the relay. The returned message carries the server-assigned `id` and `seq`. Sending an identical message twice is safe on current servers: it is stored once and the existing message is returned.
+Send an encrypted message to the relay. The returned message carries the server-assigned `id` and, on ThruBox Server 1.0 or later, its `seq`. On those servers sending an identical message twice is safe: it is stored once and the existing message is returned.
 
 ### `relay.receive(address, options?): Promise<Message[]>`
 
@@ -159,7 +159,7 @@ Fetch messages for a wallet address, oldest first.
 | `after` | `number` | Only return messages whose `seq` is greater than this |
 | `limit` | `number` | Return at most this many messages (1–1000). A full page means there may be more: ask again with `after` set to the last `seq` |
 
-Every message has a `seq`: its position in the mailbox (1, 2, 3, …). It only increases and is never reused, so remembering the highest `seq` you have handled and passing it as `after` gives you exactly the new messages. Each device keeps its own cursor.
+On ThruBox Server 1.0 or later, every message has a `seq`: its position in the mailbox (1, 2, 3, …). It only increases and is never reused, so remembering the highest `seq` you have handled and passing it as `after` gives you exactly the new messages. Each device keeps its own cursor. Older servers send no `seq` and ignore `after` and `limit`, returning the whole mailbox.
 
 ### `relay.delete(id): Promise<void>`
 

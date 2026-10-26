@@ -7,6 +7,11 @@ name: Release Drafter
 on:
   workflow_dispatch:
 
+# Two manual runs at once would both rewrite the same draft.
+concurrency:
+  group: release-drafter
+  cancel-in-progress: false
+
 permissions:
   contents: write
   pull-requests: write

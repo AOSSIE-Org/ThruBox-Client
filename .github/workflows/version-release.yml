@@ -121,11 +121,11 @@ jobs:
             if (draftRelease) {
               console.log(`Found draft release: ${draftRelease.name}`);
 
-              // Keep the draft's notes; add the generated list if it has none.
-              let body = draftRelease.body || '';
-              if (!/^## What's Changed/m.test(body)) {
-                body = `${body}\n\n${generated.body}`.trim();
-              }
+              // Keep the draft's own notes, but always use a freshly generated
+              // list: a "What's Changed" section already in the draft (such
+              // as one from Release Drafter) may be stale, so drop it.
+              const notes = (draftRelease.body || '').split(/^## What's Changed/m)[0].trim();
+              const body = `${notes}\n\n${generated.body}`.trim();
 
               // Update and publish the draft release
               await github.rest.repos.updateRelease({

@@ -451,6 +451,95 @@ describe("RelayClient", () => {
       }
     });
 
+    it("should keep polling when onError itself throws", async () => {
+      vi.useFakeTimers();
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      try {
+        mockFetch
+          .mockRejectedValueOnce(new Error("network down"))
+          .mockImplementation(() => Promise.resolve(jsonResponse([])));
+
+        const onError = vi.fn(() => {
+          throw new Error("handler bug");
+        });
+        const callback = vi.fn();
+        const stop = client.poll("0x1", callback, { intervalMs: 1000, onError });
+
+        await vi.advanceTimersByTimeAsync(50);
+        await vi.advanceTimersByTimeAsync(1050);
+        stop();
+
+        expect(onError).toHaveBeenCalledOnce();
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+        expect(callback).toHaveBeenCalledOnce();
+      } finally {
+        consoleError.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    it("should advance the cursor even if the callback empties the array", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const pages = [[message("a", 3), message("b", 5)], []];
+        mockFetch.mockImplementation(() =>
+          Promise.resolve(jsonResponse(pages.shift() ?? [])),
+        );
+
+        const callback = vi.fn((msgs: unknown[]) => {
+          msgs.length = 0;
+        });
+        const stop = client.poll("0x1", callback, { intervalMs: 1000, after: 0 });
+
+        await vi.advanceTimersByTimeAsync(50);
+        await vi.advanceTimersByTimeAsync(1050);
+        stop();
+
+        expect(mockFetch.mock.calls[1][0]).toBe(
+          "http://localhost:3000/api/messages/0x1?after=5",
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should wait for a pending async callback before polling again", async () => {
+      vi.useFakeTimers();
+
+      try {
+        mockFetch.mockImplementation(() =>
+          Promise.resolve(jsonResponse([message("a", 4)])),
+        );
+
+        let finish: () => void = () => {};
+        const callback = vi
+          .fn()
+          .mockImplementationOnce(
+            () => new Promise<void>((resolve) => (finish = resolve)),
+          )
+          .mockResolvedValue(undefined);
+        const stop = client.poll("0x1", callback, { intervalMs: 1000, after: 0 });
+
+        await vi.advanceTimersByTimeAsync(50);
+        // Well past the interval, but the first callback is still running.
+        await vi.advanceTimersByTimeAsync(3000);
+        expect(mockFetch).toHaveBeenCalledOnce();
+
+        finish();
+        await vi.advanceTimersByTimeAsync(1050);
+        stop();
+
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+        expect(mockFetch.mock.calls[1][0]).toBe(
+          "http://localhost:3000/api/messages/0x1?after=4",
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("should reject an invalid cursor", () => {
       expect(() => client.poll("0x1", vi.fn(), { after: -1 })).toThrow();
       expect(() => client.poll("0x1", vi.fn(), { after: 1.5 })).toThrow();
