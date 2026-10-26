@@ -144,22 +144,6 @@ describe("RelayClient", () => {
     });
   });
 
-  // --- delete() ---
-
-  describe("delete()", () => {
-    it("should delete a message by ID", async () => {
-      mockFetch.mockResolvedValueOnce(
-        new Response(null, { status: 204 }),
-      );
-
-      await client.delete("msg-123");
-
-      const [url, init] = mockFetch.mock.calls[0];
-      expect(url).toBe("http://localhost:3000/api/messages/msg-123");
-      expect(init.method).toBe("DELETE");
-    });
-  });
-
   // --- health() ---
 
   describe("health()", () => {
@@ -200,9 +184,9 @@ describe("RelayClient", () => {
     });
 
     it("should throw RelayNotFoundError on 404", async () => {
-      mockFetch.mockResolvedValueOnce(textResponse("message not found", 404));
+      mockFetch.mockResolvedValueOnce(textResponse("not found", 404));
 
-      await expect(client.delete("msg-123")).rejects.toThrow("message not found");
+      await expect(client.receive("0xWallet")).rejects.toThrow("not found");
     });
 
     it("should throw RelayError on other 4xx errors", async () => {

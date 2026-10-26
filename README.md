@@ -112,10 +112,9 @@ const messages = await relay.receive('0xMyWallet');
 // Later, fetch only what arrived since
 const lastSeq = messages.at(-1)?.seq ?? 0;
 const fresh = await relay.receive('0xMyWallet', { after: lastSeq });
-
-// Delete a message after reading
-await relay.delete(messages[0].id);
 ```
+
+Messages stay on the relay until they expire (the server's `ttl_days`); there is no way to delete them.
 
 ---
 
@@ -160,10 +159,6 @@ Fetch messages for a wallet address, oldest first.
 | `limit` | `number` | Return at most this many messages (1–1000). A full page means there may be more: ask again with `after` set to the last `seq` |
 
 On ThruBox Server 1.0 or later, every message has a `seq`: its position in the mailbox (1, 2, 3, …). It only increases and is never reused, so remembering the highest `seq` you have handled and passing it as `after` gives you exactly the new messages. Each device keeps its own cursor. Older servers send no `seq` and ignore `after` and `limit`, returning the whole mailbox.
-
-### `relay.delete(id): Promise<void>`
-
-Delete a specific message by ID.
 
 ### `relay.poll(address, callback, options?): () => void`
 

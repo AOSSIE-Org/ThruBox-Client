@@ -117,17 +117,6 @@ export class RelayClient {
   }
 
   /**
-   * Delete a specific message by its ID.
-   *
-   * @param id - The ID of the message to delete
-   */
-  async delete(id: string): Promise<void> {
-    await this.request<void>(`/api/messages/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    });
-  }
-
-  /**
    * Check the health of the relay server.
    *
    * @returns Health status and server timestamp
@@ -275,7 +264,7 @@ export class RelayClient {
 
           // Handle success (2xx)
           if (response.ok) {
-            // 204 No Content (e.g., DELETE)
+            // 204 No Content
             if (response.status === 204) {
               return undefined as T;
             }
