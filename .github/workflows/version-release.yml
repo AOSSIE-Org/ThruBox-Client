@@ -17,7 +17,9 @@ permissions:
 
 jobs:
   release:
-    if: ${{ github.repository_owner == 'AOSSIE-Org' }}
+    # Only release from main, including when started by hand: a manual run
+    # can pick any branch, and would otherwise tag and publish that branch.
+    if: ${{ github.repository_owner == 'AOSSIE-Org' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -67,15 +69,27 @@ jobs:
           echo "✓ Version format is valid: $VERSION"
 
       - name: Check if tag already exists
+        id: tag
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
           if git show-ref --tags --verify --quiet "refs/tags/v$VERSION"; then
-            echo "Error: Tag v$VERSION already exists"
-            exit 1
+            # An earlier run may have tagged and then failed before npm
+            # publish. Reuse the tag so a re-run can finish the release, but
+            # only if it really is this version.
+            TAGGED=$(git show "v$VERSION:VERSION" 2>/dev/null | tr -d '[:space:]')
+            if [ "$TAGGED" != "$VERSION" ]; then
+              echo "Error: Tag v$VERSION already exists but its VERSION file says '$TAGGED'"
+              exit 1
+            fi
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "✓ Tag v$VERSION already exists; reusing it to finish the release"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "✓ Tag v$VERSION does not exist yet"
           fi
-          echo "✓ Tag v$VERSION does not exist yet"
 
       - name: Create and push tag
+        if: steps.tag.outputs.exists == 'false'
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
           git config user.name "github-actions[bot]"
@@ -101,6 +115,14 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
             });
+
+            // A re-run after a failed build or publish: the release is
+            // already out, so go straight on to building and publishing.
+            if (releases.some(r => !r.draft && r.tag_name === version)) {
+              console.log(`✓ Release ${version} is already published; continuing to npm publish`);
+              core.setOutput('released', 'true');
+              return;
+            }
 
             // GitHub's generated "What's Changed" list since the last release.
             const previous = releases.find(r => !r.draft && !r.prerelease);
@@ -182,6 +204,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          # Build exactly the tagged release, also when a later run finishes it.
+          ref: v${{ needs.release.outputs.version }}
           persist-credentials: false
 
       - name: Setup Node.js
@@ -207,7 +231,10 @@ jobs:
         run: npm test
 
       - name: Pack package
-        run: npm pack --pack-destination /tmp/pack
+        run: |
+          # npm pack does not create the destination directory.
+          mkdir -p /tmp/pack
+          npm pack --pack-destination /tmp/pack
 
       - name: Upload package tarball
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -241,7 +268,21 @@ jobs:
       - name: Update npm for Trusted Publishing
         run: npm install -g npm@11.5.1
 
+      - name: Check whether this version is already on npm
+        id: npm
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          NAME=$(tar -xOzf /tmp/pack/*.tgz package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0)).name')
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "published=true" >> $GITHUB_OUTPUT
+            echo "::notice::$NAME@$VERSION is already on npm; skipping publish."
+          else
+            echo "published=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Publish to npm
+        if: steps.npm.outputs.published == 'false'
         run: npm publish /tmp/pack/*.tgz --provenance --access public
 
       - name: Publish Summary
