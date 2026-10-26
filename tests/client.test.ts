@@ -26,6 +26,10 @@ function textResponse(text: string, status: number, headers?: Record<string, str
   });
 }
 
+function message(id: string, seq: number) {
+  return { id, seq, to: "0x1", from: "0x2", payload: "p", createdAt: "t", expiresAt: null };
+}
+
 describe("RelayClient", () => {
   let client: RelayClient;
 
@@ -116,6 +120,26 @@ describe("RelayClient", () => {
 
       expect(mockFetch.mock.calls[0][0]).toBe(
         "http://localhost:3000/api/messages/addr%20with%20spaces",
+      );
+    });
+
+    it("should pass after and limit as query parameters", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse([]));
+
+      await client.receive("0xWallet", { after: 42, limit: 100 });
+
+      expect(mockFetch.mock.calls[0][0]).toBe(
+        "http://localhost:3000/api/messages/0xWallet?after=42&limit=100",
+      );
+    });
+
+    it("should send after=0 rather than dropping it", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse([]));
+
+      await client.receive("0xWallet", { after: 0 });
+
+      expect(mockFetch.mock.calls[0][0]).toBe(
+        "http://localhost:3000/api/messages/0xWallet?after=0",
       );
     });
   });
@@ -314,6 +338,122 @@ describe("RelayClient", () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it("should not send a cursor when after is not set", async () => {
+      vi.useFakeTimers();
+
+      try {
+        mockFetch.mockImplementation(() =>
+          Promise.resolve(jsonResponse([message("a", 7)])),
+        );
+
+        const stop = client.poll("0x1", vi.fn(), { intervalMs: 1000 });
+        await vi.advanceTimersByTimeAsync(1050);
+        stop();
+
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+        for (const [url] of mockFetch.mock.calls) {
+          expect(url).toBe("http://localhost:3000/api/messages/0x1");
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should advance the cursor past messages the callback handled", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const pages = [[message("a", 3), message("b", 5)], []];
+        mockFetch.mockImplementation(() =>
+          Promise.resolve(jsonResponse(pages.shift() ?? [])),
+        );
+
+        const callback = vi.fn();
+        const stop = client.poll("0x1", callback, { intervalMs: 1000, after: 2 });
+
+        await vi.advanceTimersByTimeAsync(50);
+        await vi.advanceTimersByTimeAsync(1050);
+        stop();
+
+        expect(mockFetch.mock.calls[0][0]).toBe(
+          "http://localhost:3000/api/messages/0x1?after=2",
+        );
+        expect(mockFetch.mock.calls[1][0]).toBe(
+          "http://localhost:3000/api/messages/0x1?after=5",
+        );
+        expect(callback).toHaveBeenNthCalledWith(1, [message("a", 3), message("b", 5)]);
+        expect(callback).toHaveBeenNthCalledWith(2, []);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should redeliver messages when the callback rejects", async () => {
+      vi.useFakeTimers();
+
+      try {
+        mockFetch.mockImplementation(() =>
+          Promise.resolve(jsonResponse([message("a", 4)])),
+        );
+
+        const failure = new Error("could not save");
+        const callback = vi
+          .fn()
+          .mockRejectedValueOnce(failure)
+          .mockResolvedValue(undefined);
+        const onError = vi.fn();
+        const stop = client.poll("0x1", callback, {
+          intervalMs: 1000,
+          after: 0,
+          onError,
+        });
+
+        await vi.advanceTimersByTimeAsync(50);
+        await vi.advanceTimersByTimeAsync(1050);
+        await vi.advanceTimersByTimeAsync(1050);
+        stop();
+
+        expect(onError).toHaveBeenCalledWith(failure);
+        // The first attempt failed, so the second poll asks for the same
+        // messages again; only after it succeeds does the cursor move.
+        expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([
+          "http://localhost:3000/api/messages/0x1?after=0",
+          "http://localhost:3000/api/messages/0x1?after=0",
+          "http://localhost:3000/api/messages/0x1?after=4",
+        ]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should keep polling after a synchronous callback error", async () => {
+      vi.useFakeTimers();
+
+      try {
+        mockFetch.mockImplementation(() => Promise.resolve(jsonResponse([])));
+
+        const callback = vi.fn().mockImplementationOnce(() => {
+          throw new Error("boom");
+        });
+        const onError = vi.fn();
+        const stop = client.poll("0x1", callback, { intervalMs: 1000, onError });
+
+        await vi.advanceTimersByTimeAsync(50);
+        await vi.advanceTimersByTimeAsync(1050);
+        stop();
+
+        expect(onError).toHaveBeenCalledOnce();
+        expect(callback).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should reject an invalid cursor", () => {
+      expect(() => client.poll("0x1", vi.fn(), { after: -1 })).toThrow();
+      expect(() => client.poll("0x1", vi.fn(), { after: 1.5 })).toThrow();
     });
   });
 
