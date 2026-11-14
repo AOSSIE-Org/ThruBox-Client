@@ -268,7 +268,17 @@ export class RelayClient {
             if (response.status === 204) {
               return undefined as T;
             }
-            return (await response.json()) as T;
+            try {
+              return (await response.json()) as T;
+            } catch (error) {
+              if (error instanceof SyntaxError) {
+                throw new RelayError(
+                  `Failed to parse response body as JSON: ${error.message}`,
+                  response.status,
+                );
+              }
+              throw error;
+            }
           }
 
           // Handle specific error codes (no retry)
