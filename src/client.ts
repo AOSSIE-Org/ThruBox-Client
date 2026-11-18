@@ -42,6 +42,7 @@ export class RelayClient {
   private readonly apiKey: string | undefined;
   private readonly timeout: number;
   private readonly retries: number;
+  private readonly retrySend: boolean;
 
   /**
    * Create a new RelayClient pointing to any relay server.
@@ -57,12 +58,15 @@ export class RelayClient {
       }
       this.baseUrl = parsedUrl.toString().replace(/\/+$/, "");
     } catch (err) {
-      throw new Error(`Invalid base URL: ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(`Invalid base URL: ${err instanceof Error ? err.message : String(err)}`, {
+        cause: err,
+      });
     }
 
     this.apiKey = options?.apiKey;
     this.timeout = options?.timeout ?? DEFAULT_TIMEOUT;
     this.retries = options?.retries ?? DEFAULT_RETRIES;
+    this.retrySend = options?.retrySend ?? false;
 
     if (this.timeout <= 0 || !Number.isFinite(this.timeout)) {
       throw new Error("Timeout must be a positive finite number");
@@ -247,7 +251,8 @@ export class RelayClient {
       headers["X-API-Key"] = this.apiKey;
     }
 
-    const maxRetries = init?.method === "POST" ? 0 : this.retries;
+    const maxRetries =
+      init?.method === "POST" && !this.retrySend ? 0 : this.retries;
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {

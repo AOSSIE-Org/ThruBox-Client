@@ -68,7 +68,7 @@ A **zero-dependency** TypeScript SDK for the [ThruBox Server](https://github.com
 
 - **Zero Runtime Dependencies**: Only devDependencies for build/test
 - **Typed Errors**: Specific error classes for rate limiting, payload size, not found, etc.
-- **Automatic Retry**: Exponential backoff on 5xx and network errors
+- **Automatic Retry**: Exponential backoff on 5xx and network errors, with opt-in retries for `send()`
 - **Polling**: Built-in `poll()` helper with a stop function
 - **Dual Format**: Ships ESM + CJS with TypeScript declarations
 - **Tiny**: ~2.5 KB minified
@@ -144,10 +144,13 @@ npm run lint      # ESLint
 | `apiKey` | `string` | — | API key for authenticated servers |
 | `timeout` | `number` | `10000` | Request timeout in ms |
 | `retries` | `number` | `3` | Retry attempts on network errors / 5xx |
+| `retrySend` | `boolean` | `false` | Retry `send()` (POST) on 5xx / network errors; 401/413/429 still fail fast |
 
 ### `relay.send(params): Promise<Message>`
 
 Send an encrypted message to the relay. The returned message carries the server-assigned `id` and, on ThruBox Server 1.0 or later, its `seq`. On those servers sending an identical message twice is safe: it is stored once and the existing message is returned.
+
+`send()` is not retried by default. Set `retrySend: true` to use the client's standard exponential backoff for 5xx and network/timeout errors; 401, 413, 429 and other 4xx responses still fail immediately. Pre-1.0 servers may not deduplicate messages, so leave this disabled when duplicate sends are a concern.
 
 ### `relay.receive(address, options?): Promise<Message[]>`
 

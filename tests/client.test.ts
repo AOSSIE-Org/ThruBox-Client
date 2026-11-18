@@ -256,6 +256,91 @@ describe("RelayClient", () => {
     });
   });
 
+  // --- send() retries (opt-in) ---
+
+  describe("send() retries (retrySend)", () => {
+    const params = { to: "0x1", from: "0x2", payload: "p" };
+
+    it("should retry a 503 response when retrySend is enabled", async () => {
+      vi.useFakeTimers();
+      const mathRandomSpy = vi.spyOn(Math, "random").mockReturnValue(0.5);
+      try {
+        const retryClient = new RelayClient("http://localhost:3000", {
+          retries: 1,
+          retrySend: true,
+        });
+        const stored = message("msg-1", 1);
+
+        mockFetch
+          .mockResolvedValueOnce(textResponse("server error", 503))
+          .mockResolvedValueOnce(jsonResponse(stored, 201));
+
+        const promise = retryClient.send(params);
+        await vi.advanceTimersByTimeAsync(1550);
+
+        await expect(promise).resolves.toEqual(stored);
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+      } finally {
+        mathRandomSpy.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    it("should retry a timeout when retrySend is enabled", async () => {
+      vi.useFakeTimers();
+      const mathRandomSpy = vi.spyOn(Math, "random").mockReturnValue(0.5);
+      try {
+        const retryClient = new RelayClient("http://localhost:3000", {
+          retries: 1,
+          retrySend: true,
+        });
+        const stored = message("msg-2", 2);
+
+        mockFetch
+          .mockRejectedValueOnce(new DOMException("Aborted", "AbortError"))
+          .mockResolvedValueOnce(jsonResponse(stored, 201));
+
+        const promise = retryClient.send(params);
+        await vi.advanceTimersByTimeAsync(1550);
+
+        await expect(promise).resolves.toEqual(stored);
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+      } finally {
+        mathRandomSpy.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    it.each([
+      [401, RelayUnauthorizedError],
+      [413, RelayPayloadTooLargeError],
+      [429, RelayRateLimitError],
+    ])("should not retry a %i response when retrySend is enabled", async (status, ErrorClass) => {
+      const retryClient = new RelayClient("http://localhost:3000", {
+        retries: 2,
+        retrySend: true,
+      });
+
+      mockFetch.mockResolvedValueOnce(
+        textResponse("request rejected", status, { "Retry-After": "1" }),
+      );
+
+      await expect(retryClient.send(params)).rejects.toThrow(ErrorClass);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("should not retry by default", async () => {
+      const retryClient = new RelayClient("http://localhost:3000", {
+        retries: 2,
+      });
+
+      mockFetch.mockResolvedValueOnce(textResponse("server error", 503));
+
+      await expect(retryClient.send(params)).rejects.toThrow(RelayError);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
   // --- API Key ---
 
   describe("API key", () => {
