@@ -60,6 +60,8 @@ export interface ClientOptions {
   timeout?: number;
   /** Number of retry attempts on network errors / 5xx responses. Default: 3 */
   retries?: number;
+  /** Retry POST sends on network errors / 5xx responses. Default: false */
+  retrySend?: boolean;
 }
 
 /**
